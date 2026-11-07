@@ -1,15 +1,204 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Clima Medellín</title>
-<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}.wrap{padding:4px}</style>
+<title>Medellín Weather</title>
+<style>
+  :root {
+    --bg: #191919;
+    --card: #202020;
+    --line: #2c2c2c;
+    --text: #e6e6e6;
+    --muted: #8c8c8c;
+    --orange: #f59e42;
+    --blue: #4a90e2;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    overflow: hidden;
+  }
+  .card {
+    margin: 6px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 16px 18px 14px;
+  }
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .place { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .now { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .now .temp { font-size: 40px; font-weight: 600; line-height: 1; }
+  .now .icon svg { width: 40px; height: 40px; }
+  .desc { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .hl { text-align: right; font-size: 13px; line-height: 1.7; }
+  .hl .h { color: var(--orange); font-weight: 600; }
+  .hl .l { color: var(--blue); font-weight: 600; }
+  .hl .rain { color: var(--muted); }
+  .chart { margin: 14px 0 4px; height: 46px; width: 100%; }
+  .hours {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .hours::-webkit-scrollbar { display: none; }
+  .hour {
+    flex: 0 0 auto;
+    min-width: 54px;
+    padding: 8px 6px;
+    border-radius: 12px;
+    background: var(--card);
+    text-align: center;
+    font-size: 12px;
+  }
+  .hour.current { outline: 1px solid var(--orange); }
+  .hour .t { font-size: 14px; font-weight: 600; margin: 4px 0 2px; }
+  .hour .p { color: var(--blue); font-size: 11px; min-height: 13px; }
+  .hour .time { color: var(--muted); }
+  .hour svg { width: 22px; height: 22px; margin-top: 4px; }
+  .status { font-size: 13px; color: var(--muted); padding: 8px 0; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #ffffff; --card: #f4f4f4; --line: #e6e6e6; --text: #222; --muted: #777; }
+  }
+</style>
 </head>
 <body>
-<div class="wrap">
-<a class="weatherwidget-io" href="https://forecast7.com/es/6d24n75d58/medellin/" data-label_1="MEDELLÍN" data-label_2="CLIMA" data-font="Roboto" data-icons="Climacons Animated" data-days="5" data-theme="dark" data-basecolor="#191919" data-accent="#252525" data-textcolor="#e6e6e6" data-highcolor="#f59e42" data-lowcolor="#4a90e2" data-suncolor="#f59e42" data-mooncolor="#e6e6e6" data-cloudcolor="#9aa5b1" data-cloudfill="#3a3a3a" data-raincolor="#4a90e2" data-snowcolor="#e6e6e6">MEDELLÍN CLIMA</a>
+<div class="card">
+  <div class="top">
+    <div>
+      <div class="place">Medellín · Today</div>
+      <div class="now"><span class="icon" id="nowIcon"></span><span class="temp" id="nowTemp">--°</span></div>
+      <div class="desc" id="nowDesc">Loading…</div>
+    </div>
+    <div class="hl">
+      <div>High <span class="h" id="high">--°</span></div>
+      <div>Low <span class="l" id="low">--°</span></div>
+      <div class="rain" id="rain"></div>
+    </div>
+  </div>
+  <svg class="chart" id="chart" viewBox="0 0 300 46" preserveAspectRatio="none"></svg>
+  <div class="hours" id="hours"><div class="status">Loading hourly forecast…</div></div>
 </div>
-<script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src='https://weatherwidget.io/js/widget.min.js';fjs.parentNode.insertBefore(js,fjs);}}(document,'script','weatherwidget-io-js');</script>
+
+<script>
+const LAT = 6.2442, LON = -75.5812, TZ = "America/Bogota";
+
+const ICONS = {
+  sun: '<svg viewBox="0 0 24 24" fill="none" stroke="#f59e42" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="#9aa5b1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
+  partly: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3.5" stroke="#f59e42"/><path d="M8 2.5v1M2.5 8h1M4.1 4.1l.7.7M11.9 4.1l-.7.7" stroke="#f59e42"/><path d="M9 20h8.5a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.6 1.5A2.8 2.8 0 0 0 9 20z" stroke="#c8c8c8"/></svg>',
+  cloud: '<svg viewBox="0 0 24 24" fill="none" stroke="#c8c8c8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 19h10.5a4 4 0 0 0 0-8 6 6 0 0 0-11.5 2A3 3 0 0 0 7 19z"/></svg>',
+  fog: '<svg viewBox="0 0 24 24" fill="none" stroke="#9aa5b1" stroke-width="1.8" stroke-linecap="round"><path d="M4 9h16M6 13h12M4 17h16"/></svg>',
+  rain: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 15h10.5a4 4 0 0 0 0-8 6 6 0 0 0-11.5 2A3 3 0 0 0 7 15z" stroke="#c8c8c8"/><path d="M8 18l-1 2.5M12 18l-1 2.5M16 18l-1 2.5" stroke="#4a90e2"/></svg>',
+  storm: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14h10.5a4 4 0 0 0 0-8 6 6 0 0 0-11.5 2A3 3 0 0 0 7 14z" stroke="#c8c8c8"/><path d="M13 14l-2.5 4h3L11 22" stroke="#f59e42"/></svg>'
+};
+
+function describe(code, isDay) {
+  if (code === 0) return [isDay ? ICONS.sun : ICONS.moon, "Clear sky"];
+  if (code === 1) return [isDay ? ICONS.sun : ICONS.moon, "Mostly clear"];
+  if (code === 2) return [ICONS.partly, "Partly cloudy"];
+  if (code === 3) return [ICONS.cloud, "Overcast"];
+  if (code === 45 || code === 48) return [ICONS.fog, "Fog"];
+  if (code >= 51 && code <= 57) return [ICONS.rain, "Drizzle"];
+  if (code >= 61 && code <= 67) return [ICONS.rain, "Rain"];
+  if (code >= 80 && code <= 82) return [ICONS.rain, "Rain showers"];
+  if (code >= 95) return [ICONS.storm, "Thunderstorm"];
+  return [ICONS.cloud, "Cloudy"];
+}
+
+function fmtHour(h) {
+  if (h === 0) return "12 AM";
+  if (h === 12) return "12 PM";
+  return h < 12 ? h + " AM" : (h - 12) + " PM";
+}
+
+async function load() {
+  const url = "https://api.open-meteo.com/v1/forecast?latitude=" + LAT + "&longitude=" + LON +
+    "&current=temperature_2m,weather_code,is_day" +
+    "&hourly=temperature_2m,weather_code,precipitation_probability,is_day" +
+    "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+    "&timezone=" + encodeURIComponent(TZ) + "&forecast_days=1";
+  try {
+    const res = await fetch(url);
+    const d = await res.json();
+
+    const cur = d.current;
+    const [icon, label] = describe(cur.weather_code, cur.is_day === 1);
+    document.getElementById("nowIcon").innerHTML = icon;
+    document.getElementById("nowTemp").textContent = Math.round(cur.temperature_2m) + "°";
+    document.getElementById("nowDesc").textContent = label;
+    document.getElementById("high").textContent = Math.round(d.daily.temperature_2m_max[0]) + "°";
+    document.getElementById("low").textContent = Math.round(d.daily.temperature_2m_min[0]) + "°";
+    document.getElementById("rain").textContent = "Rain " + d.daily.precipitation_probability_max[0] + "%";
+
+    const nowHour = new Date(cur.time).getHours();
+    const temps = d.hourly.temperature_2m;
+    const hoursEl = document.getElementById("hours");
+    hoursEl.innerHTML = "";
+    let currentEl = null;
+
+    d.hourly.time.forEach((t, i) => {
+      const h = new Date(t).getHours();
+      const [hi] = describe(d.hourly.weather_code[i], d.hourly.is_day[i] === 1);
+      const p = d.hourly.precipitation_probability[i];
+      const el = document.createElement("div");
+      el.className = "hour" + (h === nowHour ? " current" : "");
+      el.innerHTML = '<div class="time">' + (h === nowHour ? "Now" : fmtHour(h)) + '</div>' + hi +
+        '<div class="t">' + Math.round(temps[i]) + '°</div>' +
+        '<div class="p">' + (p >= 20 ? p + "%" : "") + '</div>';
+      hoursEl.appendChild(el);
+      if (h === nowHour) currentEl = el;
+    });
+    if (currentEl) hoursEl.scrollLeft = Math.max(0, currentEl.offsetLeft - 60);
+
+    drawChart(temps, nowHour);
+  } catch (e) {
+    document.getElementById("nowDesc").textContent = "Could not load the forecast";
+    document.getElementById("hours").innerHTML = '<div class="status">Check your connection and reload.</div>';
+  }
+}
+
+function drawChart(temps, nowHour) {
+  const svg = document.getElementById("chart");
+  const W = 300, H = 46, pad = 6;
+  const min = Math.min(...temps), max = Math.max(...temps);
+  const span = Math.max(1, max - min);
+  const pts = temps.map((t, i) => {
+    const x = (i / (temps.length - 1)) * W;
+    const y = pad + (1 - (t - min) / span) * (H - pad * 2);
+    return [x, y];
+  });
+  const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  const area = line + " L" + W + " " + H + " L0 " + H + " Z";
+  const nx = (nowHour / (temps.length - 1)) * W;
+  const ny = pts[nowHour] ? pts[nowHour][1] : H / 2;
+  svg.innerHTML =
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#f59e42" stop-opacity=".35"/>' +
+    '<stop offset="1" stop-color="#4a90e2" stop-opacity="0"/></linearGradient>' +
+    '<linearGradient id="s" x1="0" y1="0" x2="1" y2="0">' +
+    '<stop offset="0" stop-color="#4a90e2"/><stop offset=".55" stop-color="#f59e42"/>' +
+    '<stop offset="1" stop-color="#4a90e2"/></linearGradient></defs>' +
+    '<path d="' + area + '" fill="url(#g)"/>' +
+    '<path d="' + line + '" fill="none" stroke="url(#s)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>' +
+    '<line x1="' + nx + '" y1="0" x2="' + nx + '" y2="' + H + '" stroke="#8c8c8c" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"/>' +
+    '<circle cx="' + nx + '" cy="' + ny + '" r="3.5" fill="#f59e42"/>';
+}
+
+load();
+setInterval(load, 15 * 60 * 1000);
+</script>
 </body>
 </html>
